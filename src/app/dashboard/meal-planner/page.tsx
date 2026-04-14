@@ -190,7 +190,7 @@ export default function MealPlannerPage() {
                   key={c.value}
                   onClick={() => setSelectedCuisine(c.value)}
                   className={`card !p-4 text-center cursor-pointer transition-all ${
-                    selectedCuisine === c.value ? 'border-purple-500 bg-purple-500/10' : ''
+                    selectedCuisine === c.value ? '!border-rose-500 !bg-rose-500/20' : ''
                   }`}
                 >
                   <span className="text-2xl mb-1 block">{c.emoji}</span>
@@ -207,7 +207,7 @@ export default function MealPlannerPage() {
               <button
                 onClick={() => setDietType('veg')}
                 className={`card !p-4 flex items-center gap-3 cursor-pointer ${
-                  dietType === 'veg' ? 'border-green-500 bg-green-500/10' : ''
+                  dietType === 'veg' ? '!border-emerald-500 !bg-emerald-500/20' : ''
                 }`}
               >
                 <Leaf className="w-6 h-6 text-green-400" />
@@ -219,7 +219,7 @@ export default function MealPlannerPage() {
               <button
                 onClick={() => setDietType('nonveg')}
                 className={`card !p-4 flex items-center gap-3 cursor-pointer ${
-                  dietType === 'nonveg' ? 'border-orange-500 bg-orange-500/10' : ''
+                  dietType === 'nonveg' ? '!border-orange-500 !bg-orange-500/20' : ''
                 }`}
               >
                 <Drumstick className="w-6 h-6 text-orange-400" />
@@ -246,7 +246,7 @@ export default function MealPlannerPage() {
                       key={m.value}
                       onClick={() => toggleMeat(m.value)}
                       className={`card !p-3 text-center cursor-pointer text-sm ${
-                        selectedMeats.includes(m.value) ? 'border-orange-500 bg-orange-500/10' : ''
+                        selectedMeats.includes(m.value) ? '!border-orange-500 !bg-orange-500/20' : ''
                       }`}
                     >
                       <span className="text-xl mb-1 block">{m.emoji}</span>
