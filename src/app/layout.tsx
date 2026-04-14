@@ -16,6 +16,9 @@ export const metadata: Metadata = {
   title: "Vortex AI — Your AI-Powered Fitness Coach",
   description: "Transform your fitness journey with Vortex AI. AI-powered calorie tracking, personalized workout plans, smart meal planning, and an intelligent fitness coach — all in one premium platform.",
   keywords: "fitness, AI, calorie tracker, workout planner, meal planner, BMI calculator, fitness coach",
+  other: {
+    "google-adsense-account": "ca-pub-4207181866314383",
+  },
 };
 
 export default function RootLayout({
