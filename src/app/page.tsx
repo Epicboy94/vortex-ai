@@ -1,5 +1,7 @@
 'use client';
 
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
 import {
@@ -25,6 +27,15 @@ const testimonials = [
 ];
 
 export default function LandingPage() {
+  const router = useRouter();
+
+  // Detect Google OAuth redirect (access_token in URL hash)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
+      router.push('/auth/callback' + window.location.hash);
+    }
+  }, [router]);
+
   return (
     <div className="relative overflow-hidden">
       <Navbar />
