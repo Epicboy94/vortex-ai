@@ -15,48 +15,77 @@ export async function POST(req: Request) {
       messages: [
         {
           role: 'system',
-          content: `You are a professional nutritionist and meal planner. Generate a 7-day meal plan.
-          
-Rules:
+          content: `You are a world-class nutritionist and chef. Generate a SINGLE DAY meal plan (NOT a 7-day plan).
+
+IMPORTANT RULES:
 - Cuisine: ${cuisine}
 - Diet: ${dietType === 'veg' ? 'Strictly Vegetarian (no meat, no fish, no eggs if Indian)' : 'Non-Vegetarian'}
 ${meatText}
 ${allergyText}
 - Target daily calories: ${profile?.tdee || 2000} kcal
-- Each meal should be nutritious and balanced
-- Use authentic ${cuisine} dishes and ingredients
-- Include specific dish names, not generic descriptions
+- Each meal should be nutritious, balanced, and UNIQUE
+- Use authentic ${cuisine} dishes — NO generic descriptions
+- Include SPECIFIC dish names with brief cooking method descriptions
+- VARY cooking methods: grilled, steamed, sautéed, baked, raw, stir-fried, slow-cooked, roasted
+- Include exact portion sizes and calorie estimates per meal
+- Make snacks interesting, not just "fruit" — include unique regional snacks
+- NEVER use generic items like "mixed vegetables" — be specific with ingredients
+- Include a pre-workout and post-workout snack option
 
 Return ONLY a JSON object:
 {
-  "mealPlan": [
-    {
-      "day": "Monday",
-      "breakfast": "Specific dish name with brief description",
-      "lunch": "Specific dish name with brief description",
-      "snack": "Specific snack",
-      "dinner": "Specific dish name with brief description"
+  "meals": {
+    "breakfast": {
+      "name": "Specific dish name",
+      "description": "Brief appetizing description with cooking method",
+      "calories": estimated_number,
+      "ingredients": ["key ingredient 1", "key ingredient 2", "key ingredient 3"]
+    },
+    "morning_snack": {
+      "name": "Specific snack",
+      "description": "Brief description",
+      "calories": estimated_number,
+      "ingredients": ["ingredient 1", "ingredient 2"]
+    },
+    "lunch": {
+      "name": "Specific dish name",
+      "description": "Brief appetizing description with cooking method",
+      "calories": estimated_number,
+      "ingredients": ["key ingredient 1", "key ingredient 2", "key ingredient 3"]
+    },
+    "evening_snack": {
+      "name": "Specific snack",
+      "description": "Brief description",
+      "calories": estimated_number,
+      "ingredients": ["ingredient 1", "ingredient 2"]
+    },
+    "dinner": {
+      "name": "Specific dish name",
+      "description": "Brief appetizing description with cooking method",
+      "calories": estimated_number,
+      "ingredients": ["key ingredient 1", "key ingredient 2", "key ingredient 3"]
     }
-  ]
-}
-Include all 7 days (Monday through Sunday).`,
+  },
+  "totalCalories": total_estimated_number,
+  "nutritionTip": "A specific nutrition tip for this meal plan"
+}`,
         },
         {
           role: 'user',
-          content: `Generate a 7-day ${cuisine} ${dietType} meal plan. User: ${profile?.weight}kg, ${profile?.age} years.`,
+          content: `Generate a 1-day ${cuisine} ${dietType} meal plan. User: ${profile?.weight}kg, ${profile?.age} years, goal: ${profile?.fitness_goal || 'be_healthy'}.`,
         },
       ],
-      temperature: 0.6,
-      max_tokens: 2000,
+      temperature: 0.8,
+      max_tokens: 1500,
     });
 
     const text = completion.choices[0]?.message?.content || '{}';
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { mealPlan: [] };
+    const data = jsonMatch ? JSON.parse(jsonMatch[0]) : { meals: {} };
 
     return NextResponse.json(data);
   } catch (error) {
     console.error('Meal plan error:', error);
-    return NextResponse.json({ mealPlan: [] });
+    return NextResponse.json({ meals: {} });
   }
 }

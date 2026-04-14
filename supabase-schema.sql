@@ -14,8 +14,15 @@ CREATE TABLE IF NOT EXISTS profiles (
   bmi REAL,
   bmr REAL,
   tdee REAL,
+  fitness_goal TEXT DEFAULT 'be_healthy', -- 'lose_weight', 'be_healthy', 'build_muscle'
+  xp INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  badges JSONB DEFAULT '[]'::jsonb,
   streak_count INTEGER DEFAULT 0,
   last_active_date DATE,
+  last_xp_login_date DATE,
+  meal_generations_today INTEGER DEFAULT 0,
+  meal_gen_date DATE,
   is_pro BOOLEAN DEFAULT FALSE,
   trial_ends_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -62,12 +69,21 @@ CREATE TABLE IF NOT EXISTS meal_plans (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Weight logs table (new)
+CREATE TABLE IF NOT EXISTS weight_logs (
+  id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE NOT NULL,
+  weight REAL NOT NULL,
+  logged_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- Row Level Security (RLS) policies
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
 ALTER TABLE food_logs ENABLE ROW LEVEL SECURITY;
 ALTER TABLE workouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chat_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE meal_plans ENABLE ROW LEVEL SECURITY;
+ALTER TABLE weight_logs ENABLE ROW LEVEL SECURITY;
 
 -- Profiles: users can only read/write their own data
 CREATE POLICY "Users can view own profile" ON profiles FOR SELECT USING (auth.uid() = user_id);
@@ -93,7 +109,24 @@ CREATE POLICY "Users can delete own chats" ON chat_messages FOR DELETE USING (au
 CREATE POLICY "Users can view own meal plans" ON meal_plans FOR SELECT USING (auth.uid() = user_id);
 CREATE POLICY "Users can insert own meal plans" ON meal_plans FOR INSERT WITH CHECK (auth.uid() = user_id);
 
+-- Weight logs
+CREATE POLICY "Users can view own weight logs" ON weight_logs FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Users can insert own weight logs" ON weight_logs FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Users can delete own weight logs" ON weight_logs FOR DELETE USING (auth.uid() = user_id);
+
 -- Indexes for performance
 CREATE INDEX IF NOT EXISTS idx_food_logs_user_date ON food_logs (user_id, logged_at);
 CREATE INDEX IF NOT EXISTS idx_workouts_user_date ON workouts (user_id, completed_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_user ON chat_messages (user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_weight_logs_user_date ON weight_logs (user_id, logged_at);
+
+-- ============================================
+-- MIGRATION SQL (Run this if tables already exist)
+-- ============================================
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS fitness_goal TEXT DEFAULT 'be_healthy';
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS xp INTEGER DEFAULT 0;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS level INTEGER DEFAULT 1;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS badges JSONB DEFAULT '[]'::jsonb;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS last_xp_login_date DATE;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meal_generations_today INTEGER DEFAULT 0;
+-- ALTER TABLE profiles ADD COLUMN IF NOT EXISTS meal_gen_date DATE;

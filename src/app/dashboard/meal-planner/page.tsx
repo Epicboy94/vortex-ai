@@ -4,9 +4,10 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChefHat, Loader2, Crown, X, Sparkles,
-  Leaf, Drumstick
+  Leaf, Drumstick, BookOpen, Clock, Flame, UtensilsCrossed
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { awardXP, XP_REWARDS } from '@/lib/xp';
 
 const cuisines = [
   { value: 'indian', label: 'Indian', emoji: '🇮🇳' },
@@ -17,6 +18,14 @@ const cuisines = [
   { value: 'mediterranean', label: 'Mediterranean', emoji: '🫒' },
   { value: 'american', label: 'American', emoji: '🇺🇸' },
   { value: 'thai', label: 'Thai', emoji: '🇹🇭' },
+  { value: 'korean', label: 'Korean', emoji: '🇰🇷' },
+  { value: 'vietnamese', label: 'Vietnamese', emoji: '🇻🇳' },
+  { value: 'turkish', label: 'Turkish', emoji: '🇹🇷' },
+  { value: 'greek', label: 'Greek', emoji: '🇬🇷' },
+  { value: 'brazilian', label: 'Brazilian', emoji: '🇧🇷' },
+  { value: 'middle_eastern', label: 'Middle Eastern', emoji: '🧆' },
+  { value: 'african', label: 'African', emoji: '🌍' },
+  { value: 'french', label: 'French', emoji: '🇫🇷' },
 ];
 
 const nonVegTypes = [
@@ -30,12 +39,34 @@ const nonVegTypes = [
   { value: 'lamb', label: 'Lamb', emoji: '🐑' },
 ];
 
-interface MealDay {
-  day: string;
-  breakfast: string;
-  lunch: string;
-  snack: string;
-  dinner: string;
+interface MealItem {
+  name: string;
+  description: string;
+  calories: number;
+  ingredients: string[];
+}
+
+interface MealPlan {
+  meals: {
+    breakfast: MealItem;
+    morning_snack: MealItem;
+    lunch: MealItem;
+    evening_snack: MealItem;
+    dinner: MealItem;
+  };
+  totalCalories: number;
+  nutritionTip: string;
+}
+
+interface Recipe {
+  name: string;
+  prepTime: string;
+  cookTime: string;
+  servings: number;
+  calories: number;
+  ingredients: string[];
+  steps: string[];
+  tips: string;
 }
 
 export default function MealPlannerPage() {
@@ -47,7 +78,15 @@ export default function MealPlannerPage() {
   const [allergies, setAllergies] = useState<string[]>([]);
   const [allergyInput, setAllergyInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mealPlan, setMealPlan] = useState<MealDay[]>([]);
+  const [mealPlan, setMealPlan] = useState<MealPlan | null>(null);
+  const [regenCount, setRegenCount] = useState(0);
+  const [maxRegen] = useState(2);
+
+  // Recipe modal
+  const [showRecipe, setShowRecipe] = useState(false);
+  const [recipeLoading, setRecipeLoading] = useState(false);
+  const [recipe, setRecipe] = useState<Recipe | null>(null);
+  const [selectedDish, setSelectedDish] = useState('');
 
   useEffect(() => {
     const checkPro = async () => {
@@ -56,7 +95,7 @@ export default function MealPlannerPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('is_pro, trial_ends_at')
+        .select('is_pro, trial_ends_at, meal_generations_today, meal_gen_date')
         .eq('user_id', user.id)
         .single();
 
@@ -78,6 +117,19 @@ export default function MealPlannerPage() {
         }).eq('user_id', user.id);
         setIsPro(true);
       }
+
+      // Check daily regen count
+      const today = new Date().toISOString().split('T')[0];
+      if (profile?.meal_gen_date === today) {
+        setRegenCount(profile.meal_generations_today || 0);
+      } else {
+        // Reset counter for new day
+        await supabase.from('profiles').update({
+          meal_generations_today: 0,
+          meal_gen_date: today,
+        }).eq('user_id', user.id);
+        setRegenCount(0);
+      }
     };
     checkPro();
   }, []);
@@ -96,7 +148,7 @@ export default function MealPlannerPage() {
   };
 
   const generateMealPlan = async () => {
-    if (!selectedCuisine) return;
+    if (!selectedCuisine || regenCount >= maxRegen) return;
     setLoading(true);
 
     try {
@@ -105,7 +157,7 @@ export default function MealPlannerPage() {
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tdee, weight, height, age, gender')
+        .select('tdee, weight, height, age, gender, fitness_goal')
         .eq('user_id', user.id)
         .single();
 
@@ -121,7 +173,19 @@ export default function MealPlannerPage() {
         }),
       });
       const data = await res.json();
-      setMealPlan(data.mealPlan || []);
+      setMealPlan(data);
+
+      // Update regen counter
+      const newCount = regenCount + 1;
+      setRegenCount(newCount);
+      const today = new Date().toISOString().split('T')[0];
+      await supabase.from('profiles').update({
+        meal_generations_today: newCount,
+        meal_gen_date: today,
+      }).eq('user_id', user.id);
+
+      // Award XP
+      await awardXP(user.id, XP_REWARDS.GENERATE_MEAL);
 
       // Save to Supabase
       await supabase.from('meal_plans').insert({
@@ -129,12 +193,33 @@ export default function MealPlannerPage() {
         cuisine: selectedCuisine,
         diet_type: dietType,
         allergies,
-        plan: data.mealPlan || [],
+        plan: data,
       });
     } catch {
       console.error('Failed to generate meal plan');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const generateRecipe = async (dishName: string) => {
+    setSelectedDish(dishName);
+    setShowRecipe(true);
+    setRecipeLoading(true);
+    setRecipe(null);
+
+    try {
+      const res = await fetch('/api/ai/recipe', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ dish: dishName, cuisine: selectedCuisine }),
+      });
+      const data = await res.json();
+      setRecipe(data);
+    } catch {
+      console.error('Failed to generate recipe');
+    } finally {
+      setRecipeLoading(false);
     }
   };
 
@@ -147,13 +232,13 @@ export default function MealPlannerPage() {
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
         >
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center mx-auto mb-6">
-            <Crown className="w-8 h-8 text-purple-400" />
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500/20 to-orange-500/20 flex items-center justify-center mx-auto mb-6">
+            <Crown className="w-8 h-8 text-rose-400" />
           </div>
           <h2 className="text-2xl font-bold text-white mb-3">Upgrade to Pro</h2>
           <p className="text-gray-400 text-sm mb-6">
-            Access the AI Meal Planner with 8+ cuisines, veg/non-veg options, 
-            allergy-safe plans, and weekly meal schedules.
+            Access the AI Meal Planner with 16+ cuisines, veg/non-veg options, 
+            recipe generation, and personalized daily meal plans.
           </p>
           <p className="text-3xl font-bold gradient-text mb-1">₹50</p>
           <p className="text-gray-500 text-xs mb-6">per month</p>
@@ -167,19 +252,27 @@ export default function MealPlannerPage() {
 
   if (!isPro) return null;
 
+  const mealSlots = mealPlan?.meals ? [
+    { key: 'breakfast', label: 'Breakfast', emoji: '🌅', data: mealPlan.meals.breakfast },
+    { key: 'morning_snack', label: 'Morning Snack', emoji: '🍎', data: mealPlan.meals.morning_snack },
+    { key: 'lunch', label: 'Lunch', emoji: '☀️', data: mealPlan.meals.lunch },
+    { key: 'evening_snack', label: 'Evening Snack', emoji: '🥤', data: mealPlan.meals.evening_snack },
+    { key: 'dinner', label: 'Dinner', emoji: '🌙', data: mealPlan.meals.dinner },
+  ] : [];
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       <div>
         <div className="flex items-center gap-2 mb-1">
           <h2 className="text-2xl font-bold text-white">Meal Planner</h2>
-          <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-purple-500 to-cyan-500 text-xs font-semibold text-white flex items-center gap-1">
+          <span className="px-2 py-0.5 rounded-full bg-gradient-to-r from-rose-500 to-orange-500 text-xs font-semibold text-white flex items-center gap-1">
             <Crown className="w-3 h-3" /> PRO
           </span>
         </div>
-        <p className="text-gray-500 text-sm">Generate a personalized 7-day meal plan tailored to your preferences.</p>
+        <p className="text-gray-500 text-sm">Generate a personalized daily meal plan. {maxRegen - regenCount} generation{maxRegen - regenCount !== 1 ? 's' : ''} remaining today.</p>
       </div>
 
-      {!mealPlan.length && (
+      {!mealPlan && (
         <motion.div className="space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           {/* Cuisine selection */}
           <div>
@@ -289,62 +382,167 @@ export default function MealPlannerPage() {
           {/* Generate */}
           <button
             onClick={generateMealPlan}
-            disabled={loading || !selectedCuisine}
+            disabled={loading || !selectedCuisine || regenCount >= maxRegen}
             className="btn-primary w-full justify-center !py-3 disabled:opacity-50"
           >
             {loading ? (
               <><Loader2 className="w-5 h-5 animate-spin" /> Generating Meal Plan...</>
+            ) : regenCount >= maxRegen ? (
+              <>Daily Limit Reached (2/2)</>
             ) : (
-              <><Sparkles className="w-5 h-5" /> Generate 7-Day Meal Plan</>
+              <><Sparkles className="w-5 h-5" /> Generate Daily Meal Plan ({maxRegen - regenCount} left)</>
             )}
           </button>
         </motion.div>
       )}
 
       {/* Meal Plan Display */}
-      {mealPlan.length > 0 && (
+      {mealPlan && mealSlots.length > 0 && (
         <motion.div className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
           <div className="flex items-center justify-between">
-            <h3 className="text-white font-semibold">Your 7-Day Meal Plan</h3>
+            <div>
+              <h3 className="text-white font-semibold">Today&apos;s Meal Plan</h3>
+              {mealPlan.totalCalories && (
+                <p className="text-gray-500 text-xs mt-1 flex items-center gap-1">
+                  <Flame className="w-3 h-3" /> ~{mealPlan.totalCalories} kcal total
+                </p>
+              )}
+            </div>
             <button
-              onClick={() => setMealPlan([])}
-              className="text-gray-500 hover:text-white text-sm transition-colors"
+              onClick={() => setMealPlan(null)}
+              disabled={regenCount >= maxRegen}
+              className="text-gray-500 hover:text-white text-sm transition-colors disabled:opacity-30"
             >
-              Generate New
+              Regenerate ({maxRegen - regenCount} left)
             </button>
           </div>
 
-          {mealPlan.map((day, i) => (
+          {mealSlots.map((slot, i) => (
             <motion.div
-              key={day.day}
+              key={slot.key}
               className="card"
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: i * 0.08 }}
             >
-              <h4 className="text-white font-semibold mb-3 flex items-center gap-2">
-                <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-cyan-500/20 flex items-center justify-center text-xs text-purple-400 font-bold">
-                  {i + 1}
-                </span>
-                {day.day}
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  { label: 'Breakfast', value: day.breakfast, emoji: '🌅' },
-                  { label: 'Lunch', value: day.lunch, emoji: '☀️' },
-                  { label: 'Snack', value: day.snack, emoji: '🍎' },
-                  { label: 'Dinner', value: day.dinner, emoji: '🌙' },
-                ].map((meal) => (
-                  <div key={meal.label} className="bg-gray-900/50 rounded-lg p-3">
-                    <p className="text-gray-500 text-xs mb-1">{meal.emoji} {meal.label}</p>
-                    <p className="text-gray-200 text-sm">{meal.value}</p>
-                  </div>
-                ))}
+              <div className="flex items-start justify-between">
+                <div className="flex-1">
+                  <p className="text-gray-500 text-xs mb-1 flex items-center gap-1">
+                    {slot.emoji} {slot.label}
+                    {slot.data?.calories && (
+                      <span className="text-rose-400 ml-2">~{slot.data.calories} kcal</span>
+                    )}
+                  </p>
+                  <h4 className="text-white font-semibold text-sm">{slot.data?.name || 'N/A'}</h4>
+                  {slot.data?.description && (
+                    <p className="text-gray-400 text-xs mt-1">{slot.data.description}</p>
+                  )}
+                  {slot.data?.ingredients && slot.data.ingredients.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 mt-2">
+                      {slot.data.ingredients.map((ing: string, idx: number) => (
+                        <span key={idx} className="text-[10px] px-2 py-0.5 rounded-full bg-white/[0.05] text-gray-400 border border-white/5">
+                          {ing}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button
+                  onClick={() => generateRecipe(slot.data?.name || '')}
+                  className="flex-shrink-0 ml-3 flex items-center gap-1.5 px-3 py-2 rounded-lg bg-rose-500/10 border border-rose-500/20 text-rose-400 text-xs font-medium hover:bg-rose-500/20 transition-colors"
+                >
+                  <BookOpen className="w-3 h-3" /> Recipe
+                </button>
               </div>
             </motion.div>
           ))}
+
+          {mealPlan.nutritionTip && (
+            <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+              <p className="text-amber-400 text-xs">💡 <strong>Tip:</strong> {mealPlan.nutritionTip}</p>
+            </div>
+          )}
         </motion.div>
       )}
+
+      {/* Recipe Modal */}
+      <AnimatePresence>
+        {showRecipe && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-black/70" onClick={() => setShowRecipe(false)} />
+            <motion.div
+              className="relative w-full max-w-lg max-h-[80vh] overflow-y-auto card !p-6"
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.9, y: 20 }}
+            >
+              <button
+                onClick={() => setShowRecipe(false)}
+                className="absolute top-4 right-4 text-gray-500 hover:text-white"
+              >
+                <X className="w-5 h-5" />
+              </button>
+
+              {recipeLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <Loader2 className="w-8 h-8 animate-spin text-rose-400 mb-3" />
+                  <p className="text-gray-500 text-sm">Generating recipe for {selectedDish}...</p>
+                </div>
+              ) : recipe ? (
+                <div className="space-y-4">
+                  <div>
+                    <h3 className="text-white font-bold text-lg mb-1">{recipe.name}</h3>
+                    <div className="flex items-center gap-4 text-xs text-gray-500">
+                      <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Prep: {recipe.prepTime}</span>
+                      <span className="flex items-center gap-1"><Flame className="w-3 h-3" /> Cook: {recipe.cookTime}</span>
+                      <span className="flex items-center gap-1"><UtensilsCrossed className="w-3 h-3" /> {recipe.servings} serving{recipe.servings !== 1 ? 's' : ''}</span>
+                      <span className="text-rose-400 font-medium">{recipe.calories} kcal</span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-white font-semibold text-sm mb-2">Ingredients</h4>
+                    <ul className="space-y-1">
+                      {recipe.ingredients?.map((ing, i) => (
+                        <li key={i} className="text-gray-400 text-sm flex items-start gap-2">
+                          <span className="text-rose-400 mt-1">•</span> {ing}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div>
+                    <h4 className="text-white font-semibold text-sm mb-2">Steps</h4>
+                    <ol className="space-y-2">
+                      {recipe.steps?.map((step, i) => (
+                        <li key={i} className="text-gray-400 text-sm flex items-start gap-3">
+                          <span className="w-5 h-5 rounded-full bg-rose-500/20 flex items-center justify-center flex-shrink-0 text-rose-400 text-[10px] font-bold mt-0.5">
+                            {i + 1}
+                          </span>
+                          {step}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+
+                  {recipe.tips && (
+                    <div className="p-3 rounded-xl bg-amber-500/5 border border-amber-500/15">
+                      <p className="text-amber-400 text-xs">👨‍🍳 <strong>Chef&apos;s Tip:</strong> {recipe.tips}</p>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="text-gray-500 text-center py-8">Failed to generate recipe. Try again.</p>
+              )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

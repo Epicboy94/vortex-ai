@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Plus, UtensilsCrossed, Loader2, Trash2, TrendingUp } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { awardXP, XP_REWARDS } from '@/lib/xp';
 
 interface FoodEntry {
   id: string;
@@ -76,6 +77,9 @@ export default function FoodLogPage() {
         fat: data.fat || 0,
         logged_at: new Date().toISOString(),
       });
+
+      // Award XP for logging food
+      await awardXP(user.id, XP_REWARDS.LOG_FOOD);
 
       setFood('');
       loadEntries();

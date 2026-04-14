@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Dumbbell, Loader2, CheckCircle2, RefreshCw, Timer, Flame, Zap } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import { awardXP, XP_REWARDS } from '@/lib/xp';
 
 interface Exercise {
   name: string;
@@ -93,6 +94,9 @@ export default function TrainingPage() {
           total_burn: burned,
           completed_at: new Date().toISOString(),
         });
+
+        // Award XP for completing workout
+        await awardXP(user.id, XP_REWARDS.COMPLETE_WORKOUT);
       }
     }
   };

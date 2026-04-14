@@ -34,3 +34,38 @@ export function calculateTDEE(bmr: number, activityLevel: string): number {
 export function calculateTargetBurn(calorieIntake: number): number {
   return Math.round(calorieIntake * 0.5);
 }
+
+// Adjust TDEE based on fitness goal
+export function adjustTDEEForGoal(tdee: number, goal: string): number {
+  switch (goal) {
+    case 'lose_weight':
+      return Math.round(tdee - 500);  // Caloric deficit
+    case 'build_muscle':
+      return Math.round(tdee + 300);  // Caloric surplus
+    case 'be_healthy':
+    default:
+      return tdee;  // Maintenance
+  }
+}
+
+// Calculate metabolic burn for hours elapsed today
+export function calculateMetabolicBurn(bmr: number, hoursElapsed: number): number {
+  return Math.round((bmr / 24) * hoursElapsed);
+}
+
+// Calculate net calories: Eaten - (Workout Burn + Metabolic Burn)
+export function calculateNetCalories(
+  caloriesEaten: number,
+  workoutBurn: number,
+  bmr: number,
+  hoursElapsed: number
+): number {
+  const metabolicBurn = calculateMetabolicBurn(bmr, hoursElapsed);
+  return Math.round(caloriesEaten - workoutBurn - metabolicBurn);
+}
+
+// Get hours elapsed since midnight
+export function getHoursElapsedToday(): number {
+  const now = new Date();
+  return now.getHours() + now.getMinutes() / 60;
+}

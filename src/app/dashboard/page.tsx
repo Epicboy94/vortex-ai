@@ -2,10 +2,11 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Activity, Flame, Utensils, Dumbbell, TrendingUp, Target } from 'lucide-react';
+import { Activity, Flame, Utensils, Dumbbell, TrendingUp, Target, Zap, Crown, ArrowRight } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
-import { getBMICategory } from '@/lib/health';
+import { getBMICategory, calculateMetabolicBurn, getHoursElapsedToday } from '@/lib/health';
 import { Line, Bar } from 'react-chartjs-2';
+import Link from 'next/link';
 import {
   Chart as ChartJS,
   CategoryScale, LinearScale, PointElement, LineElement,
@@ -19,12 +20,16 @@ ChartJS.register(
 
 interface Profile {
   bmi: number;
+  bmr: number;
   weight: number;
   height: number;
   tdee: number;
   streak_count: number;
   name: string;
   activity_level: string;
+  fitness_goal: string;
+  is_pro: boolean;
+  xp: number;
 }
 
 interface FoodLog {
@@ -41,6 +46,8 @@ export default function DashboardPage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [todayCalories, setTodayCalories] = useState(0);
   const [todayBurn, setTodayBurn] = useState(0);
+  const [metabolicBurn, setMetabolicBurn] = useState(0);
+  const [netCalories, setNetCalories] = useState(0);
   const [weeklyData, setWeeklyData] = useState<{ dates: string[]; intake: number[]; burn: number[] }>({
     dates: [], intake: [], burn: [],
   });
@@ -82,6 +89,15 @@ export default function DashboardPage() {
       const totalBurn = (workouts as Workout[] || []).reduce((sum, w) => sum + (w.total_burn || 0), 0);
       setTodayBurn(totalBurn);
 
+      // Calculate metabolism
+      const bmr = profileData?.bmr || 1600;
+      const hours = getHoursElapsedToday();
+      const metaBurn = calculateMetabolicBurn(bmr, hours);
+      setMetabolicBurn(metaBurn);
+
+      // Net calories
+      setNetCalories(totalCals - totalBurn - metaBurn);
+
       // Weekly data
       const dates: string[] = [];
       const intake: number[] = [];
@@ -117,7 +133,24 @@ export default function DashboardPage() {
     load();
   }, []);
 
+  // Live metabolic burn update every 60 seconds
+  useEffect(() => {
+    if (!profile?.bmr) return;
+    const interval = setInterval(() => {
+      const hours = getHoursElapsedToday();
+      const metaBurn = calculateMetabolicBurn(profile.bmr, hours);
+      setMetabolicBurn(metaBurn);
+      setNetCalories(todayCalories - todayBurn - metaBurn);
+    }, 60000);
+    return () => clearInterval(interval);
+  }, [profile, todayCalories, todayBurn]);
+
   const bmiCat = profile?.bmi ? getBMICategory(profile.bmi) : null;
+  const goalLabel = profile?.fitness_goal === 'lose_weight' ? '🔥 Lose Weight' :
+                    profile?.fitness_goal === 'build_muscle' ? '🏋️ Build Muscle' : '❤️ Be Healthy';
+
+  const netColor = netCalories > (profile?.tdee || 2000) * 0.3 ? '#ef4444' :
+                   netCalories > 0 ? '#fbbf24' : '#10b981';
 
   const lineChartData = {
     labels: weeklyData.dates,
@@ -125,31 +158,31 @@ export default function DashboardPage() {
       {
         label: 'Calories In',
         data: weeklyData.intake,
-        borderColor: '#8b5cf6',
-        backgroundColor: 'rgba(139, 92, 246, 0.1)',
+        borderColor: '#f43f5e',
+        backgroundColor: 'rgba(244, 63, 94, 0.1)',
         fill: true,
         tension: 0.4,
-        pointBackgroundColor: '#8b5cf6',
+        pointBackgroundColor: '#f43f5e',
       },
       {
         label: 'Calories Burned',
         data: weeklyData.burn,
-        borderColor: '#06b6d4',
-        backgroundColor: 'rgba(6, 182, 212, 0.1)',
+        borderColor: '#f97316',
+        backgroundColor: 'rgba(249, 115, 22, 0.1)',
         fill: true,
         tension: 0.4,
-        pointBackgroundColor: '#06b6d4',
+        pointBackgroundColor: '#f97316',
       },
     ],
   };
 
   const barChartData = {
-    labels: ['Intake', 'Burned', 'Target'],
+    labels: ['Eaten', 'Workout Burn', 'Metabolism', 'Net'],
     datasets: [
       {
-        data: [todayCalories, todayBurn, profile?.tdee || 2000],
-        backgroundColor: ['rgba(139, 92, 246, 0.6)', 'rgba(6, 182, 212, 0.6)', 'rgba(236, 72, 153, 0.3)'],
-        borderColor: ['#8b5cf6', '#06b6d4', '#ec4899'],
+        data: [todayCalories, todayBurn, metabolicBurn, Math.abs(netCalories)],
+        backgroundColor: ['rgba(244, 63, 94, 0.6)', 'rgba(249, 115, 22, 0.6)', 'rgba(251, 191, 36, 0.4)', `${netColor}60`],
+        borderColor: ['#f43f5e', '#f97316', '#fbbf24', netColor],
         borderWidth: 1,
         borderRadius: 8,
       },
@@ -159,11 +192,11 @@ export default function DashboardPage() {
   const chartOptions = {
     responsive: true,
     plugins: {
-      legend: { labels: { color: '#9ca3af', font: { size: 11 } } },
+      legend: { labels: { color: '#94a3b8', font: { size: 11 } } },
     },
     scales: {
-      x: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(75,85,99,0.2)' } },
-      y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(75,85,99,0.2)' } },
+      x: { ticks: { color: '#64748b' }, grid: { color: 'rgba(75,85,99,0.2)' } },
+      y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(75,85,99,0.2)' } },
     },
   };
 
@@ -171,20 +204,35 @@ export default function DashboardPage() {
     responsive: true,
     plugins: { legend: { display: false } },
     scales: {
-      x: { ticks: { color: '#9ca3af' }, grid: { display: false } },
-      y: { ticks: { color: '#6b7280' }, grid: { color: 'rgba(75,85,99,0.2)' } },
+      x: { ticks: { color: '#94a3b8' }, grid: { display: false } },
+      y: { ticks: { color: '#64748b' }, grid: { color: 'rgba(75,85,99,0.2)' } },
     },
   };
 
   return (
     <div className="space-y-6">
-      {/* Stats row */}
+      {/* Goal Banner */}
+      {profile?.fitness_goal && (
+        <motion.div
+          className="flex items-center gap-3 p-3 rounded-xl bg-gradient-to-r from-rose-500/10 to-orange-500/10 border border-rose-500/15"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+        >
+          <Target className="w-5 h-5 text-rose-400 flex-shrink-0" />
+          <p className="text-white text-sm">
+            Goal: <span className="font-bold gradient-text">{goalLabel}</span>
+            <span className="text-gray-500 ml-2">• Daily Target: {profile.tdee} kcal</span>
+          </p>
+        </motion.div>
+      )}
+
+      {/* Live Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'BMI', value: profile?.bmi?.toFixed(1) || '--', sub: bmiCat?.label || '', icon: Activity, color: bmiCat?.color || '#8b5cf6' },
-          { label: 'Calories Today', value: todayCalories.toLocaleString(), sub: `/ ${profile?.tdee || 2000} kcal`, icon: Utensils, color: '#8b5cf6' },
-          { label: 'Burned Today', value: todayBurn.toLocaleString(), sub: 'kcal', icon: Flame, color: '#06b6d4' },
-          { label: 'Target Burn', value: Math.round(todayCalories * 0.5).toLocaleString(), sub: 'kcal (50% of intake)', icon: Target, color: '#ec4899' },
+          { label: 'Calories Eaten', value: todayCalories.toLocaleString(), sub: `/ ${profile?.tdee || 2000} kcal`, icon: Utensils, color: '#f43f5e' },
+          { label: 'Workout Burn', value: todayBurn.toLocaleString(), sub: 'kcal', icon: Dumbbell, color: '#f97316' },
+          { label: 'Metabolism Burn', value: metabolicBurn.toLocaleString(), sub: `kcal (${getHoursElapsedToday().toFixed(1)}h)`, icon: Flame, color: '#fbbf24' },
+          { label: 'Net Calories', value: `${netCalories > 0 ? '+' : ''}${netCalories.toLocaleString()}`, sub: netCalories <= 0 ? 'deficit ✅' : 'surplus', icon: Activity, color: netColor },
         ].map((stat, i) => (
           <motion.div
             key={stat.label}
@@ -205,7 +253,6 @@ export default function DashboardPage() {
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Weekly trend */}
         <motion.div
           className="card"
           initial={{ opacity: 0, y: 20 }}
@@ -213,13 +260,12 @@ export default function DashboardPage() {
           transition={{ delay: 0.4 }}
         >
           <div className="flex items-center gap-2 mb-4">
-            <TrendingUp className="w-5 h-5 text-purple-400" />
+            <TrendingUp className="w-5 h-5 text-rose-400" />
             <h3 className="text-white font-semibold text-sm">Weekly Calorie Trend</h3>
           </div>
           <Line data={lineChartData} options={chartOptions} />
         </motion.div>
 
-        {/* Today's summary */}
         <motion.div
           className="card"
           initial={{ opacity: 0, y: 20 }}
@@ -227,8 +273,8 @@ export default function DashboardPage() {
           transition={{ delay: 0.5 }}
         >
           <div className="flex items-center gap-2 mb-4">
-            <Target className="w-5 h-5 text-cyan-400" />
-            <h3 className="text-white font-semibold text-sm">Today&apos;s Summary</h3>
+            <Target className="w-5 h-5 text-orange-400" />
+            <h3 className="text-white font-semibold text-sm">Today&apos;s Breakdown</h3>
           </div>
           <Bar data={barChartData} options={barOptions} />
         </motion.div>
@@ -246,7 +292,6 @@ export default function DashboardPage() {
             <Activity className="w-5 h-5 text-green-400" /> BMI Analysis
           </h3>
           <div className="flex flex-col sm:flex-row items-center gap-8">
-            {/* BMI Circle */}
             <div className="relative w-32 h-32 flex-shrink-0">
               <svg className="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
                 <circle cx="60" cy="60" r="52" strokeWidth="8" fill="none" className="progress-ring-bg" />
@@ -288,9 +333,9 @@ export default function DashboardPage() {
       {/* Quick Actions */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         {[
-          { href: '/dashboard/food-log', label: 'Log Food', desc: 'Track what you ate', icon: Utensils, color: 'from-purple-500 to-violet-600' },
-          { href: '/dashboard/training', label: 'Start Training', desc: 'AI workout plan', icon: Dumbbell, color: 'from-cyan-500 to-blue-600' },
-          { href: '/dashboard/coach', label: 'Ask AI Coach', desc: 'Get fitness advice', icon: Activity, color: 'from-pink-500 to-rose-600' },
+          { href: '/dashboard/food-log', label: 'Log Food', desc: 'Track what you ate', icon: Utensils, color: 'from-rose-500 to-red-600' },
+          { href: '/dashboard/training', label: 'Start Training', desc: 'AI workout plan', icon: Dumbbell, color: 'from-orange-500 to-amber-600' },
+          { href: '/dashboard/coach', label: 'Ask AI Coach', desc: 'Get fitness advice', icon: Zap, color: 'from-amber-500 to-yellow-600' },
         ].map((action, i) => (
           <motion.a
             key={action.href}
@@ -310,6 +355,38 @@ export default function DashboardPage() {
           </motion.a>
         ))}
       </div>
+
+      {/* Pro Teaser for free users */}
+      {profile && !profile.is_pro && (
+        <motion.div
+          className="card !border-amber-500/20 !p-6"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.9 }}
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center flex-shrink-0">
+              <Crown className="w-6 h-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-white font-bold text-base mb-1">Unlock Vortex Pro</h3>
+              <p className="text-gray-500 text-sm mb-3">
+                Get AI meal planning, recipe generation, advanced analytics, and more. 
+                Earn 2,000 XP for free access or subscribe for ₹50/month.
+              </p>
+              <div className="flex items-center gap-3">
+                <Link
+                  href="/dashboard/xp"
+                  className="btn-primary !py-2 !px-4 !text-xs"
+                >
+                  Earn Free Pro <ArrowRight className="w-3 h-3" />
+                </Link>
+                <span className="text-gray-600 text-xs">{profile.xp || 0} / 2,000 XP</span>
+              </div>
+            </div>
+          </div>
+        </motion.div>
+      )}
     </div>
   );
 }
