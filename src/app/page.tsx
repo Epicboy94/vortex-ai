@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import Link from 'next/link';
+import { supabase } from '@/lib/supabase';
 import {
   Zap, Brain, Flame, Utensils, Dumbbell, TrendingUp,
   ChevronRight, Star, Shield, Clock, Check, Crown
@@ -28,13 +29,91 @@ const testimonials = [
 
 export default function LandingPage() {
   const router = useRouter();
+  const [authLoading, setAuthLoading] = useState(false);
 
   // Detect Google OAuth redirect (access_token in URL hash)
   useEffect(() => {
-    if (typeof window !== 'undefined' && window.location.hash.includes('access_token')) {
-      router.push('/auth/callback' + window.location.hash);
-    }
+    const handleOAuth = async () => {
+      if (typeof window === 'undefined') return;
+      const hash = window.location.hash;
+      if (!hash.includes('access_token')) return;
+
+      setAuthLoading(true);
+
+      // Wait for Supabase to pick up the token from the hash
+      const { data: { session } } = await supabase.auth.getSession();
+
+      if (!session) {
+        // If getSession didn't work, try listening for the auth state change
+        const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+          if (event === 'SIGNED_IN' && session) {
+            subscription.unsubscribe();
+            await handlePostLogin(session.user);
+          }
+        });
+        return;
+      }
+
+      await handlePostLogin(session.user);
+    };
+
+    const handlePostLogin = async (user: { id: string; email?: string; user_metadata?: Record<string, string> }) => {
+      try {
+        // Check if profile has onboarding completed
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('height')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profile?.height) {
+          window.location.href = '/dashboard';
+          return;
+        }
+
+        // Check if profile record exists
+        const { data: existing } = await supabase
+          .from('profiles')
+          .select('id')
+          .eq('user_id', user.id)
+          .single();
+
+        if (!existing) {
+          await supabase.from('profiles').insert({
+            user_id: user.id,
+            name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+            streak_count: 0,
+            xp: 0,
+            level: 1,
+            badges: [],
+            is_pro: false,
+          });
+        }
+
+        window.location.href = '/onboarding';
+      } catch (err) {
+        console.error('OAuth post-login error:', err);
+        window.location.href = '/dashboard';
+      }
+    };
+
+    handleOAuth();
   }, [router]);
+
+  // Show loading screen during OAuth processing
+  if (authLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#020617]">
+        <div className="flex flex-col items-center">
+          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center mb-6">
+            <Zap className="w-8 h-8 text-white" />
+          </div>
+          <div className="w-6 h-6 border-2 border-rose-500 border-t-transparent rounded-full animate-spin mb-4" />
+          <p className="text-gray-400 text-sm">Signing you in with Google...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="relative overflow-hidden">
