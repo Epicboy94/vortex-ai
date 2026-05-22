@@ -77,7 +77,7 @@ export default function SettingsPage() {
       const email = user.email || '';
       setCurrentUserEmail(email);
       console.log('Current user email:', email);
-      if (email.toLowerCase() === 'mohsinhasan@gmail.com') {
+      if (email.toLowerCase() === 'mohsinhasan1612@gmail.com') {
         setIsAdmin(true);
       }
     };
