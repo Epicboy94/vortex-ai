@@ -30,6 +30,7 @@ interface Profile {
   fitness_goal: string;
   is_pro: boolean;
   xp: number;
+  created_at: string;
 }
 
 interface FoodLog {
@@ -47,6 +48,7 @@ export default function DashboardPage() {
   const [todayCalories, setTodayCalories] = useState(0);
   const [todayBurn, setTodayBurn] = useState(0);
   const [metabolicBurn, setMetabolicBurn] = useState(0);
+  const [isFirstDay, setIsFirstDay] = useState(true);
   const [netCalories, setNetCalories] = useState(0);
   const [weeklyData, setWeeklyData] = useState<{ dates: string[]; intake: number[]; burn: number[] }>({
     dates: [], intake: [], burn: [],
@@ -66,6 +68,11 @@ export default function DashboardPage() {
       if (profileData) setProfile(profileData as Profile);
 
       const today = new Date().toISOString().split('T')[0];
+
+      // Check if this is the user's first day
+      const createdDate = profileData?.created_at ? new Date(profileData.created_at).toISOString().split('T')[0] : today;
+      const isDay1 = createdDate === today;
+      setIsFirstDay(isDay1);
 
       // Today's food logs
       const { data: foodLogs } = await supabase
@@ -92,7 +99,7 @@ export default function DashboardPage() {
       // Calculate metabolism
       const bmr = profileData?.bmr || 1600;
       const hours = getHoursElapsedToday();
-      const metaBurn = calculateMetabolicBurn(bmr, hours);
+      const metaBurn = isDay1 ? 0 : calculateMetabolicBurn(bmr, hours);
       setMetabolicBurn(metaBurn);
 
       // Net calories
@@ -227,11 +234,11 @@ export default function DashboardPage() {
       )}
 
       {/* Live Stats row */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className={`grid grid-cols-2 ${isFirstDay ? "lg:grid-cols-3" : "lg:grid-cols-4"} gap-4`}>
         {[
           { label: 'Calories Eaten', value: todayCalories.toLocaleString(), sub: `/ ${profile?.tdee || 2000} kcal`, icon: Utensils, color: '#f43f5e' },
           { label: 'Workout Burn', value: todayBurn.toLocaleString(), sub: 'kcal', icon: Dumbbell, color: '#f97316' },
-          { label: 'Metabolism Burn', value: metabolicBurn.toLocaleString(), sub: `kcal (${getHoursElapsedToday().toFixed(1)}h)`, icon: Flame, color: '#fbbf24' },
+          ...(!isFirstDay ? [{ label: 'Metabolism Burn', value: metabolicBurn.toLocaleString(), sub: `kcal (${getHoursElapsedToday().toFixed(1)}h)`, icon: Flame, color: '#fbbf24' }] : []),
           { label: 'Net Calories', value: `${netCalories > 0 ? '+' : ''}${netCalories.toLocaleString()}`, sub: netCalories <= 0 ? 'deficit ✅' : 'surplus', icon: Activity, color: netColor },
         ].map((stat, i) => (
           <motion.div

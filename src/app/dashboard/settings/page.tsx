@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { User, Ruler, Weight, Activity, Save, Loader2, LogOut, Scale, TrendingDown, TrendingUp } from 'lucide-react';
+import { User, Ruler, Weight, Activity, Save, Loader2, LogOut, Scale, TrendingDown, TrendingUp, Crown, Gift, Mail, Lock, CheckCircle2, Clock } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useRouter } from 'next/navigation';
 import { calculateBMI, calculateBMR, calculateTDEE, adjustTDEEForGoal } from '@/lib/health';
@@ -38,6 +38,13 @@ export default function SettingsPage() {
   const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
   const [lastWeightDate, setLastWeightDate] = useState('');
 
+  // Admin Pro giveaway
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [grantEmail, setGrantEmail] = useState('');
+  const [grantLoading, setGrantLoading] = useState(false);
+  const [grantResult, setGrantResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [currentUserEmail, setCurrentUserEmail] = useState('');
+
   useEffect(() => {
     const load = async () => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -64,6 +71,13 @@ export default function SettingsPage() {
       if (weights && weights.length > 0) {
         setWeightHistory(weights as WeightEntry[]);
         setLastWeightDate(weights[weights.length - 1].logged_at);
+      }
+
+      // Check if current user is admin
+      const email = user.email || '';
+      setCurrentUserEmail(email);
+      if (email === 'mohisnhasan1612@gmail.com') {
+        setIsAdmin(true);
       }
     };
     load();
@@ -145,6 +159,39 @@ export default function SettingsPage() {
     }
   };
 
+  // Calculate days until next weight log
+  const daysSinceLastLog = lastWeightDate
+    ? Math.floor((Date.now() - new Date(lastWeightDate).getTime()) / (1000 * 60 * 60 * 24))
+    : 999;
+  const daysUntilNextLog = Math.max(0, 7 - daysSinceLastLog);
+  const canLogWeight = daysSinceLastLog >= 7 || !lastWeightDate;
+
+  const handleGrantPro = async () => {
+    if (!grantEmail.trim()) return;
+    setGrantLoading(true);
+    setGrantResult(null);
+
+    try {
+      const res = await fetch('/api/admin/grant-pro', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: grantEmail.trim(), adminSecret: 'vortex_admin_2026_secret' }),
+      });
+      const data = await res.json();
+
+      if (data.success) {
+        setGrantResult({ success: true, message: data.message });
+        setGrantEmail('');
+      } else {
+        setGrantResult({ success: false, message: data.error || 'Failed to grant Pro' });
+      }
+    } catch {
+      setGrantResult({ success: false, message: 'Network error. Please try again.' });
+    } finally {
+      setGrantLoading(false);
+    }
+  };
+
   const handleDeleteAccount = async () => {
     if (!confirm('Are you sure? This will delete all your data permanently.')) return;
     const { data: { user } } = await supabase.auth.getUser();
@@ -164,11 +211,6 @@ export default function SettingsPage() {
   const weightChange = weightHistory.length >= 2
     ? (weightHistory[weightHistory.length - 1].weight - weightHistory[0].weight).toFixed(1)
     : null;
-
-  // Days since last weight log
-  const daysSinceLastLog = lastWeightDate
-    ? Math.floor((Date.now() - new Date(lastWeightDate).getTime()) / (1000 * 60 * 60 * 24))
-    : 999;
 
   const weightChartData = {
     labels: weightHistory.map(w => new Date(w.logged_at).toLocaleDateString('en', { month: 'short', day: 'numeric' })),
@@ -193,9 +235,13 @@ export default function SettingsPage() {
           <h3 className="text-white font-semibold text-sm flex items-center gap-2">
             <Scale className="w-4 h-4 text-rose-400" /> Log Your Weight
           </h3>
-          {daysSinceLastLog >= 7 && (
+          {canLogWeight ? (
             <span className="px-2 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[10px] font-bold animate-pulse">
-              📊 Time to log!
+              Time to log!
+            </span>
+          ) : (
+            <span className="flex items-center gap-1 px-2 py-1 rounded-full bg-gray-800 border border-gray-700 text-gray-400 text-[10px] font-medium">
+              <Clock className="w-3 h-3" /> Next log in {daysUntilNextLog} day{daysUntilNextLog !== 1 ? 's' : ''}
             </span>
           )}
         </div>
@@ -211,10 +257,10 @@ export default function SettingsPage() {
           />
           <button
             onClick={handleLogWeight}
-            disabled={weightLoading || !newWeight}
+            disabled={weightLoading || !newWeight || !canLogWeight}
             className="btn-primary !px-5 disabled:opacity-50"
           >
-            {weightLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Log'}
+            {weightLoading ? <Loader2 className="w-5 h-5 animate-spin" /> : canLogWeight ? 'Log' : <Lock className="w-4 h-4" />}
           </button>
         </div>
 
@@ -308,6 +354,56 @@ export default function SettingsPage() {
           {saved ? 'Saved!' : 'Save Changes'}
         </button>
       </motion.div>
+
+      {/* Admin: Grant Pro */}
+      {isAdmin && (
+        <motion.div className="card !border-amber-500/15" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.15 }}>
+          <div className="flex items-center gap-2 mb-4">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-amber-500 to-rose-500 flex items-center justify-center">
+              <Gift className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <h3 className="text-amber-400 font-semibold text-sm">Admin: Grant Pro Access</h3>
+              <p className="text-gray-600 text-[10px]">Give Pro to any user by their Gmail</p>
+            </div>
+          </div>
+
+          <div className="flex gap-3">
+            <div className="relative flex-1">
+              <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+              <input
+                type="email"
+                value={grantEmail}
+                onChange={(e) => { setGrantEmail(e.target.value); setGrantResult(null); }}
+                className="input-field !pl-10"
+                placeholder="user@gmail.com"
+              />
+            </div>
+            <button
+              onClick={handleGrantPro}
+              disabled={grantLoading || !grantEmail.trim()}
+              className="btn-primary !px-5 disabled:opacity-50"
+            >
+              {grantLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Crown className="w-4 h-4" />}
+            </button>
+          </div>
+
+          {grantResult && (
+            <motion.div
+              className={`mt-3 p-3 rounded-lg text-sm flex items-center gap-2 ${
+                grantResult.success
+                  ? 'bg-emerald-500/10 border border-emerald-500/20 text-emerald-400'
+                  : 'bg-red-500/10 border border-red-500/20 text-red-400'
+              }`}
+              initial={{ opacity: 0, y: -5 }}
+              animate={{ opacity: 1, y: 0 }}
+            >
+              {grantResult.success ? <CheckCircle2 className="w-4 h-4 flex-shrink-0" /> : null}
+              {grantResult.message}
+            </motion.div>
+          )}
+        </motion.div>
+      )}
 
       <motion.div className="card" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.2 }}>
         <h3 className="text-red-400 font-semibold text-sm mb-3">Danger Zone</h3>
