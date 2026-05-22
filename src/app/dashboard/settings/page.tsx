@@ -76,7 +76,8 @@ export default function SettingsPage() {
       // Check if current user is admin
       const email = user.email || '';
       setCurrentUserEmail(email);
-      if (email === 'mohisnhasan1612@gmail.com') {
+      console.log('Current user email:', email);
+      if (email.toLowerCase() === 'mohsinhasan@gmail.com') {
         setIsAdmin(true);
       }
     };
